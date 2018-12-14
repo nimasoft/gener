@@ -1,0 +1,20 @@
+Package: gener
+Type: Package
+Title: A library of useful general functions in R
+Version: 2.7.9
+Date: 10 October 2018
+Author: Nicolas Berta
+Maintainer: Nicolas Berta <nicolas.berta@gmail.com>
+Description: This package provides a useful general library of functions in R. 
+  There are various functions for working with numerics, characters, vectors,
+  matrices and data.frames plus many functions for conversion, error handling and
+  data verification.
+License: MIT
+LazyData: TRUE
+Collate: 
+    'clust.R'
+    'nibetree.R'
+    'io.R'
+    'linalg.R'
+    'gener.R'
+RoxygenNote: 6.1.1
