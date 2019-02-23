@@ -1,8 +1,8 @@
 Package: gener
 Type: Package
 Title: A library of useful general functions in R
-Version: 2.7.9
-Date: 10 October 2018
+Version: 2.8.0
+Date: 24 February 2019
 Author: Nicolas Berta
 Maintainer: Nicolas Berta <nicolas.berta@gmail.com>
 Description: This package provides a useful general library of functions in R. 

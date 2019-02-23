@@ -4,8 +4,8 @@
 # Author:       Nicolas Berta 
 # Email :       nicolas.berta@gmail.com
 # Start Date:   21 October 2013
-# Last change:  10 October 2018
-# Version:      2.7.9
+# Last change:  24 February 2019
+# Version:      2.8.0
 
 # Version   Date               Action
 # -----------------------------------
@@ -115,6 +115,7 @@
 # 2.7.7     05 July 2018       linalg.R updated to ver 1.2.3
 # 2.7.8     24 July 2018       Functions list.edit() and list.add() modified: works with NULL as the first input argument
 # 2.7.9     10 October 2018    Function appendCol() modified. Small change to rectify a bug
+# 2.8.0     24 February 2019   Functions assert() and verify() modified: default value for argument err_src updated.
 
 
 # --------------------------------------------
@@ -268,7 +269,8 @@ inc = function(v, increment = 1){
 #'   Argument x can not be greater than 1
 #'
 #' @export
-assert <- function(flag, err_msg = 'Assertion Error !', err_src = NULL){
+assert <- function(flag, err_msg = 'Assertion Error !', err_src = paste(deparse(sys.calls()[[max(sys.nframe()-1,1)]]), collapse = "")){
+
   #
   if (length(flag) > 1){flag = (sum(!flag) == 0)}
   if (!flag) {
@@ -383,8 +385,8 @@ findChainParts <- function(){
 verify <- function(var, allowed = NULL, domain = NULL, lengths = NULL, dims = NULL, null_allowed = T,
                    names_domain = NULL, rownames_domain = NULL, names_include = NULL, names_identical = NULL,
                    rownames_include = NULL, rownames_identical = NULL, fix = F,
-                   err_src = paste(deparse(sys.calls()[[sys.nframe()-1]]), collapse = ""), err_msg = 'Error in Operation!', default = NULL, varname = deparse(substitute(var))){
-  
+                   err_src = paste(deparse(sys.calls()[[max(sys.nframe()-1,1)]]), collapse = ""), err_msg = 'Error in Operation!', default = NULL, varname = deparse(substitute(var))){
+
   if (is.null(var)){if(null_allowed){return(default)} else {stop("NULL value is not allowed for argument '" %++% varname  %++% "'", call. = F)}}
   
   clsv = class(var)
