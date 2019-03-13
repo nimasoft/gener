@@ -4,8 +4,8 @@
 # Author:       Nicolas Berta 
 # Email :       nicolas.berta@gmail.com
 # Start Date:   21 October 2013
-# Last change:  24 February 2019
-# Version:      2.8.0
+# Last change:  14 March 2019
+# Version:      2.8.1
 
 # Version   Date               Action
 # -----------------------------------
@@ -116,6 +116,7 @@
 # 2.7.8     24 July 2018       Functions list.edit() and list.add() modified: works with NULL as the first input argument
 # 2.7.9     10 October 2018    Function appendCol() modified. Small change to rectify a bug
 # 2.8.0     24 February 2019   Functions assert() and verify() modified: default value for argument err_src updated.
+# 2.8.1     14 March 2019      Function list.default() added.
 
 
 # --------------------------------------------
@@ -2242,4 +2243,15 @@ applyFunctionList = function(x, L){y = x; for (fun in L){y = fun(y)}; return(y)}
 #   } else {}
 # }
 
-
+#' @export
+list.default = function(l, ...){
+  lst = list(...)
+  
+  for(i in names(lst)){
+    if(is.null(l[[i]])){
+      l[[i]] = lst[[i]]
+    }
+  }
+  
+  return(l)
+}
