@@ -398,4 +398,85 @@ sql.binColumn = function(column, breaks){
 # Example:
 # sql.binColumn('LoanTenure', breaks = c('< 1 Yr' = 365, '1-2 Yrs' = 730, '2-3 Yrs' = 1095, '3-4 Yrs' = 1460, '4-5 Yrs' = 1825, '> 6 Yrs' = 2190))
 
+sparklyr.read_s3 = function(path){
+  sc <- sparklyr::spark_connect(master = 'local')
+  el <- sparklyr::spark_read_csv(sc, name = 'el', path = path)
+  return(el)
+}
 
+
+
+### aggregator module:
+
+AGGREGATOR = setRefClass(
+  "AGGREGATOR", 
+  
+  fields = c(tables = "list"), 
+  
+  methods = c(
+    initialize = function(data){
+      tables <<- list(data = data)
+    },
+    
+    # groups by given id columns and summarises sum of values but saves previous results in the tables list to do it faster for 
+    # next runs
+    # property 'tables' is a list of tables containing the original dataset and all pre-computed aggregated dataset
+    # if aggregated data does not exist in the list, the function will compute it and adds the table to the list
+    aggregate_by = function(id_cols, value_col){
+      ds = tables$data
+      mincols = ncol(ds) - 1
+      for(tbl in tables){
+        ns = colnames(tbl) %-% value_col
+        if((ns %<% id_cols) & (id_cols %<% ns)){return(tbl)}
+        nc = length(ns)
+        if(id_cols %<% ns){
+          if(mincols > nc){
+            ds = tbl
+            mincols = nc
+          }
+        }
+      }
+      scr = paste0("ds ", "%>% group_by(", id_cols %>% paste(collapse = ","), ") %>% summarise(", value_col, " = ", "sum", "(", value_col, ")) %>% ungroup()")
+      out = parse(text = scr) %>% eval
+      tables[[length(tables) + 1]] <<- out 
+      return(out)
+    },
+    
+    get.flowNetwork = function(id_cols, value_col, percentage = F){
+      links = NULL
+      
+      for(i in sequence(length(id_cols) - 1)){
+        aggregate_by(c(id_cols[i], id_cols[i + 1]), value_col) %>% 
+          select_(source = id_cols[i], target = id_cols[i + 1], value = value_col) %>% 
+          mutate(svname = id_cols[i], tvname = id_cols[i + 1]) %>% rbind(links) -> links
+      }
+      
+      links %<>% mutate(hovertext = paste0(source, ' --> ', target, ': ', value))
+      
+      links$source = paste(links$svname, links$source, sep = "=")
+      links$target = paste(links$tvname, links$target, sep = "=")
+      
+      links %<>% left_join(links %>% group_by(source) %>% summarise(sumval = sum(value)), by = 'source') %>% 
+        mutate(ratio = round(100*value/sumval, digits = 2)) %>% 
+        mutate(hovertext = hovertext %>% paste0(' (', ratio, '%)')) 
+      #links$tooltip = paste()
+      if(percentage){
+        links %<>% left_join(links %>% group_by(target) %>% summarise(sumratio = sum(ratio)) %>% select(source = target, sumratio), by = 'source') %>% 
+          mutate(sumratio = ifelse(is.na(sumratio), 100, sumratio)) %>% 
+          mutate(pathratio = round(ratio*sumratio/100, digits = 2))
+      }
+      
+      nodes = data.frame(id = c(links$source, links$target)) %>% 
+        distinct(id, .keep_all = T) %>% mutate(label = id)
+      
+      list(nodes = nodes, links = links)
+    },
+    
+    plot.sankey = function(id_cols, value_col, percentage = F, plotter = 'networkD3'){
+      if(length(id_cols) == 0) return(NULL)
+      
+      get.flowNetwork(id_cols = id_cols, value_col = value_col, percentage = percentage) %>% 
+        viser::viserPlot(key = 'id', linkTooltip = 'hovertext', label = 'label', linkWidth = ifelse(percentage, 'pathratio', 'value'), source = 'source', target = 'target', plotter = plotter, type = 'sankey')
+    }
+  )
+)
