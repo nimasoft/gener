@@ -6,8 +6,8 @@
 # Author:        Nicolas Berta
 # Email :        nicolas.berta@gmail.com
 # Start Date:    28 October 2016
-# Last Revision: 12 September 2018
-# Version:       1.3.3
+# Last Revision: 26 March 2019
+# Version:       1.3.6
 
 # Version History:
 
@@ -23,7 +23,7 @@
 # 1.3.1     01 August 2017     Function rScriptFilter() exported.
 # 1.3.2     15 May 2018        Function sqlScript() modified: changes column names with 'AS' if argument 'fields' is a named vector
 # 1.3.3     12 September 2018  Function runSQL() added
-#
+# 1.3.6     26 March 2019      Function binColumns() added
 
 # This function reads a table by ODBC and generates an object of type TIME.SERIES
 # Reads a table using ODBC
@@ -480,3 +480,30 @@ AGGREGATOR = setRefClass(
     }
   )
 )
+
+# bins numeric columns to categorical 
+# binners is a list containing:
+# input_col = colname to be binned, must have numeric values
+# output_col = colname to be generated as a result of binning
+# splits = named numeric vector containing splits and labels for them
+bin_columns = function(df, binners){
+  if(inherits(df, c('data.frame', 'tibble'))){
+    for (b in binners){
+      df %>% pull(b$input_col) %>% cut(breaks = b$splits %>% unname, labels = names(b$splits)) -> df[, b$output_col]
+    }
+  } else if (inherits(df, 'tbl_spark')){
+    
+    df %<>% sparklyr::ft_bucketizer(
+      input_cols   = binners %>% lapply(function(x) x$input_col) %>% unlist %>% as.character,
+      output_cols  = binners %>% lapply(function(x) x$output_col) %>% unlist %>% as.character,
+      splits_array = binners %>% lapply(function(x) x$splits %>% unname))
+    
+    for(b in binners){
+      df %<>% rename(indexed = b$output_col) %>% sparklyr::ft_index_to_string(input_col = 'indexed', output_col = b$output_col, labels = b$splits %>% names) %>% 
+        select(- indexed)
+    }
+    
+  } else stop("Unsupported class for argument 'df'")
+  return(df)
+}
+
