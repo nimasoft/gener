@@ -4,8 +4,8 @@
 # Author:       Nicolas Berta 
 # Email :       nicolas.berta@gmail.com
 # Start Date:   21 October 2013
-# Last change:  14 March 2019
-# Version:      2.8.1
+# Last change:  26 March 2019
+# Version:      2.8.2
 
 # Version   Date               Action
 # -----------------------------------
@@ -117,6 +117,7 @@
 # 2.7.9     10 October 2018    Function appendCol() modified. Small change to rectify a bug
 # 2.8.0     24 February 2019   Functions assert() and verify() modified: default value for argument err_src updated.
 # 2.8.1     14 March 2019      Function list.default() added.
+# 2.8.2     26 March 2019      Function charFilter() added. Test it and see how it works.
 
 
 # --------------------------------------------
@@ -2255,3 +2256,22 @@ list.default = function(l, ...){
   
   return(l)
 }
+
+# todo: add reverse as argument
+#' @export
+charFilter = function(str, ..., and = T, match_case = F){
+  pat = c(...) %>% verify('character')
+  if(!match_case){
+    strl = str %>% tolower
+    patl = pat %>% tolower
+  } else {
+    strl = strl
+    patl = pat
+  }
+  w = chif(and, strl %>% length %>% sequence, c())
+  for(p in patl){
+    w = chif(and, intersect(w, grep(p, strl)), union(w, grep(p, strl)))
+  }
+  str[w]
+}
+
