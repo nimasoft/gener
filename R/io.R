@@ -6,8 +6,8 @@
 # Author:        Nicolas Berta
 # Email :        nicolas.berta@gmail.com
 # Start Date:    28 October 2016
-# Last Revision: 26 March 2019
-# Version:       1.3.6
+# Last Revision: 12 September 2018
+# Version:       1.3.3
 
 # Version History:
 
@@ -23,7 +23,7 @@
 # 1.3.1     01 August 2017     Function rScriptFilter() exported.
 # 1.3.2     15 May 2018        Function sqlScript() modified: changes column names with 'AS' if argument 'fields' is a named vector
 # 1.3.3     12 September 2018  Function runSQL() added
-# 1.3.6     26 March 2019      Function binColumns() added
+#
 
 # This function reads a table by ODBC and generates an object of type TIME.SERIES
 # Reads a table using ODBC
@@ -395,15 +395,6 @@ sql.binColumn = function(column, breaks){
   return(mutscr)
 }
 
-# Example:
-# sql.binColumn('LoanTenure', breaks = c('< 1 Yr' = 365, '1-2 Yrs' = 730, '2-3 Yrs' = 1095, '3-4 Yrs' = 1460, '4-5 Yrs' = 1825, '> 6 Yrs' = 2190))
-
-sparklyr.read_s3 = function(path){
-  sc <- sparklyr::spark_connect(master = 'local')
-  el <- sparklyr::spark_read_csv(sc, name = 'el', path = path)
-  return(el)
-}
-
 
 
 ### aggregator module:
@@ -481,12 +472,23 @@ AGGREGATOR = setRefClass(
   )
 )
 
+################## SPARK TOOLS ###############################
+# Example:
+# sql.binColumn('LoanTenure', breaks = c('< 1 Yr' = 365, '1-2 Yrs' = 730, '2-3 Yrs' = 1095, '3-4 Yrs' = 1460, '4-5 Yrs' = 1825, '> 6 Yrs' = 2190))
+
+spark.read_s3 = function(path){
+  sc <- sparklyr::spark_connect(master = 'local')
+  el <- sparklyr::spark_read_csv(sc, name = 'el', path = path)
+  return(el)
+}
+
+
 # bins numeric columns to categorical 
 # binners is a list containing:
 # input_col = colname to be binned, must have numeric values
 # output_col = colname to be generated as a result of binning
 # splits = named numeric vector containing splits and labels for them
-bin_columns = function(df, binners){
+spark.bin = function(df, binners){
   if(inherits(df, c('data.frame', 'tibble'))){
     for (b in binners){
       df %>% pull(b$input_col) %>% cut(breaks = b$splits %>% unname, labels = names(b$splits)) -> df[, b$output_col]
@@ -506,4 +508,67 @@ bin_columns = function(df, binners){
   } else stop("Unsupported class for argument 'df'")
   return(df)
 }
+
+
+# 2btransferred to gener or niraspark (sparker)?
+spark.rename = function(tbl, ...){
+  ns = c(...) %>% verify('character')
+  lb = names(ns)
+  if(is.null(lb)){return(tbl)}
+  scr = paste0("tbl %>% dplyr::rename(", lb %>% paste(ns, sep = ' = ') %>% paste(collapse = ' , '), ")")
+  parse(text = scr) %>% eval
+}
+
+spark.mutate = function(tbl, ...){
+  ns = c(...) %>% verify('character')
+  lb = names(ns)
+  if(is.null(lb)){return(tbl)}
+  scr = paste0("tbl %>% dplyr::mutate(", lb %>% paste(ns, sep = ' = ') %>% paste(collapse = ' , '), ")")
+  parse(text = scr) %>% eval
+}
+
+spark.select = function(tbl, ...){
+  ns = c(...) %>% verify('character') %>% intersect(colnames(tbl))
+  if(length(ns) == 0){return(tbl)}
+  scr = paste0("tbl %>% dplyr::select(", ns %>% paste(collapse = ' , '), ")")
+  parse(text = scr) %>% eval
+}
+
+spark.unselect = function(tbl, ...){
+  ns = c(...) %>% verify('character') %>% intersect(colnames(tbl))
+  if(length(ns) == 0){return(tbl)}
+  scr = paste0("tbl %>% dplyr::select(", paste('-',ns) %>% paste(collapse = ' , '), ")")
+  parse(text = scr) %>% eval
+}
+
+spark.dummify = function(tbl, ..., keep_original = T, keep_index = F){
+  cat_cols = c(...) %>% verify('character', domain = colnames(tbl), default = character()) %>% unique
+  if(length(cat_cols) == 0) {return(tbl)}
+  
+  # scr     <- paste0('tbl %>% filter(', paste(paste(cat_cols, '>= 0'), collapse = ' ,'), ')')
+  scr     <- paste0('tbl %>% mutate(', paste0(paste0(cat_cols, ' = as.character(abs(as.integer(', cat_cols, ')))'), collapse = ' ,'), ')')
+  tbl     <- parse(text = scr) %>% eval
+  uniques <- list()
+  for(col in cat_cols){
+    icn <- col %>% paste('Index', sep = '_') # icn: indexed column name
+    tbl %<>% ft_string_indexer(input_col = col, output_col = icn, string_order_type = 'alphabetDesc')
+    
+    scr  <- paste0("tbl %>% distinct(", col, ", ", icn, ") %>% collect")
+    parse(text = scr) %>% eval -> uniques[[col]]
+    if(nrow(uniques[[col]]) > 2){
+      labels <- paste(col, uniques[[col]] %>% pull(col), sep= '_')
+      # uniques[[col]] <- uniques[[col]][- length(uniques[[col]])]
+      tbl %<>% ft_one_hot_encoder(icn, 'outlist', drop_last = F) %>% 
+        sdf_separate_column('outlist', into = labels) %>% select(-outlist)
+      if(!keep_original){
+        tbl <- parse(text = paste0("tbl %>% select(-", col, ")")) %>% eval
+      }
+      if(!keep_index){
+        tbl <- parse(text = paste0("tbl %>% select(-", icn, ")")) %>% eval
+      }
+    }
+  }
+  return(tbl) 
+}
+
 
