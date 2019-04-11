@@ -5,7 +5,7 @@
 # Email :       nicolas.berta@gmail.com
 # Start Date:   21 October 2013
 # Last change:  26 March 2019
-# Version:      2.8.2
+# Version:      2.8.3
 
 # Version   Date               Action
 # -----------------------------------
@@ -118,6 +118,8 @@
 # 2.8.0     24 February 2019   Functions assert() and verify() modified: default value for argument err_src updated.
 # 2.8.1     14 March 2019      Function list.default() added.
 # 2.8.2     26 March 2019      Function charFilter() added. Test it and see how it works.
+# 2.8.3     11 April 2019      Function partition() added. 
+
 
 
 # --------------------------------------------
@@ -2275,3 +2277,8 @@ charFilter = function(str, ..., and = T, match_case = F){
   str[w]
 }
 
+partition = function(tbl, ratio = 0.7){
+  N   = nrow(tbl)
+  ind = N %>% sequence %>% sample(size = floor(ratio*N), replace = F)
+  list(part1 = tbl[ind, ], part2 = tbl[- ind, ])
+}
