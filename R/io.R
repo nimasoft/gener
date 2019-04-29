@@ -575,4 +575,8 @@ spark.dummify = function(tbl, ..., keep_original = T, keep_index = F){
   return(tbl) 
 }
 
+sql.head = function(input, n){
+  input %>% paste('LIMIT', n)
+}
+
 
