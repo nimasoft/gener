@@ -2277,6 +2277,7 @@ charFilter = function(str, ..., and = T, match_case = F){
   str[w]
 }
 
+#' @export
 partition = function(tbl, ratio = 0.7){
   N   = nrow(tbl)
   ind = N %>% sequence %>% sample(size = floor(ratio*N), replace = F)
