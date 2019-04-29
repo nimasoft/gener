@@ -310,7 +310,11 @@ sql.filter = function(input, ...){
   qry = paste0("SELECT * FROM (", input, ") WHERE ")
   for (fn in fnms){
     if(inherits(filter[[fn]], 'character')){
-      qry %<>% paste0(fn," = '", filter[[fn]], "'")
+      if(length(filter[[fn]]) == 1){
+        qry %<>% paste0(fn," = '", filter[[fn]], "'")
+      } else {
+        qry %<>% paste0(fn," IN (", paste0("'", filter[[fn]], "'") %>% paste(collapse = ','), ")")
+      }
     } else {
       qry %<>% paste0(fn," = ", filter[[fn]])
     }
@@ -569,6 +573,10 @@ spark.dummify = function(tbl, ..., keep_original = T, keep_index = F){
     }
   }
   return(tbl) 
+}
+
+sql.head = function(input, n){
+  input %>% paste('LIMIT', n)
 }
 
 
