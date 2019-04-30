@@ -1558,7 +1558,7 @@ numerics = function(df){
 #' @export
 nominals = function(df){
   classes = sapply(df, class)
-  classes[classes %in% c('factor', 'character', 'logical', 'ordered')] %>% names
+  classes[classes %in% c('factor', 'character', 'logical', 'ordered', 'integer')] %>% names
 }
 
 #' Returns labels of the columns of the given data frame containing date-time values
