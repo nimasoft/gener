@@ -14,6 +14,7 @@
 #                                clst: clustering list: list of all kmenas or skmeans clusterings
 #                                bnc: best number of clusters
 # 1.2.2     21 September 2016    Argument bnc_threshold added to functions bnc() and elbow()
+# 1.2.3     28 May 2019          function elbow() modified: for euclidean metric, max.num.cluster now can be equal to nrow(M)
 
 
 cluster.distances <- function(M, SK){
@@ -66,15 +67,19 @@ cluster.moments <- function(M, SK){
 #' @export
 elbow <- function(M, max.num.clusters = 10, metric = "euclidean", bnc_threshold = 0.2, doPlot = T) {
   if(!inherits(M, 'matrix')){M %<>% as.matrix}
-  assert(nrow(M) >= max.num.clusters, 'Number of rows less than maximum number of clusters', err_src = 'elbow')
-  assert(max.num.clusters > 1, 'Maximum number of clusters must be greater than 1', err_src = 'elbow')
+  nr = nrow(M)
+  max.num.clusters = min(max.num.clusters, nr)
+  # assert(nrow(M) >= max.num.clusters, 'Number of rows less than maximum number of clusters', err_src = 'elbow')
+  assert(max.num.clusters >= 1, 'Maximum number of clusters must be greater than 1', err_src = 'elbow')
   
   wgss = c()
   clst = list()
-  
   if (metric == "euclidean"){
-    for (num.clusters in 1:max.num.clusters) {
-      K    = kmeans(M, num.clusters)
+    for (num.clusters in sequence(max.num.clusters)) {
+      if(num.clusters == nr){
+        K = list(cluster = sequence(nr), tot.withinss = 0)
+      } else {K = kmeans(M, num.clusters)}
+      
       wgss = c(wgss, K$tot.withinss)
       clst %<>% list.add(K)
     }
