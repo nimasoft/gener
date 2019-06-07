@@ -215,8 +215,9 @@ is.empty = function(x){
   # x %<>% na.omit causes great problems
   if      (inherits(x, c('matrix', 'data.frame', 'tibble', 'data.table'))){flag = (dim(x)[1] == 0) | (dim(x)[2] == 0) | (sum(!is.na(x)) == 0)}
   else if (inherits(x, 'list')){
-    y = x %>% unlist
-    if(!inherits(y, 'list')){flag = y %>% is.empty}
+    #y = x %>% unlist
+    #if(inherits(y, 'list')){flag = y %>% list.clean %>% is.empty} else (flag = length(x) == 0)
+    flag = (length(x) == 0)
   }
   else if (inherits(x, 'character')){flag = (sum(x != '', na.rm = T) == 0) | (sum(!is.na(x)) == 0)}
   else if (length(x) == 0){flag = T}
