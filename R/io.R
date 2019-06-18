@@ -579,4 +579,24 @@ sql.head = function(input, n){
   input %>% paste('LIMIT', n)
 }
 
+                                        
+#' @export                                        
+read_parquet <- function(path, columns = NULL) {
+  library(reticulate)
+  library(dplyr)
+  pandas <- import("pandas")
+  
+  path <- path.expand(path)
+  path <- normalizePath(path)
+  
+  if (!is.null(columns)) columns = as.list(columns)
+  
+  xdf <- pandas$read_parquet(path, columns = columns)
+  
+  xdf <- as.data.frame(xdf, stringsAsFactors = FALSE)
+  
+  dplyr::tbl_df(xdf)
+  
+}                                        
+                                        
 
