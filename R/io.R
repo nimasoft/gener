@@ -480,6 +480,9 @@ AGGREGATOR = setRefClass(
 # Example:
 # sql.binColumn('LoanTenure', breaks = c('< 1 Yr' = 365, '1-2 Yrs' = 730, '2-3 Yrs' = 1095, '3-4 Yrs' = 1460, '4-5 Yrs' = 1825, '> 6 Yrs' = 2190))
 
+
+
+###### Spark tools:
 spark.read_s3 = function(path){
   sc <- sparklyr::spark_connect(master = 'local')
   el <- sparklyr::spark_read_csv(sc, name = 'el', path = path)
@@ -575,28 +578,196 @@ spark.dummify = function(tbl, ..., keep_original = T, keep_index = F){
   return(tbl) 
 }
 
+###### Athena tools:
+
+buildAthenaConnection = function(bucket = "s3://aws-athena-query-results-192395310368-ap-southeast-2/"){
+  pyathena = reticulate::import('pyathena')
+  pyathena$connect(s3_staging_dir = bucket, region_name='ap-southeast-2')
+}
+
+read_s3.athena   = function(con, query){
+  pandas   = reticulate::import('pandas')
+  pandas$read_sql(query, con)  
+}
+
+buildAthenaDataset = function(conn, dsName = 'dataset'){
+  curser = conn$cursor()
+  qry = paste("CREATE DATABASE", dsName)
+  cursor$execute(qry)
+}
+
+buildAthenaTable = function(conn, dsName = 'dataset', tblName = 'data', s3_data_path, drop_if_exists = T, format = c('parquet', 'csv')){
+  cursor = conn$cursor()
+  format = match.arg(format)
+  if(drop_if_exists){
+    # Delete existing table
+    cursor$execute("DROP TABLE if exists " %>% paste0(dsName, '.', tblName))
+  }
+  
+  #create table statement please note that all the columns have string datatype. 
+  #Note that if all files contains column headers column headers will appear as a record in the table. You need to exclude the header while writing the select query
+  # TODO: need to generalize for given structure:
+  # structure    = "(caseID STRING, eventType STRING, eventTime STRING, variable STRING,value STRING)"
+  structure    = "(caseID STRING, eventType STRING, eventTime TIMESTAMP, variable STRING,value FLOAT)"
+  partition    = " PARTITIONED BY(caseid STRING, eventTime TIMESTAMP, )"
+  # s3_data_path = 's3://eventmapper.prod.sticky.westpac.elulaservices.com/run=488f037c-d5c2-475a-8d8f-4372f62e2177/data/'
+  whatsthis    = 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+  if(format == 'parquet'){
+    qry          = paste0("CREATE EXTERNAL TABLE ", dsName, ".", tblName, structure, " STORED AS PARQUET LOCATION '", s3_data_path, "'", " tblproperties ('parquet.compress'='SNAPPY');")
+  } else {
+    qry          = paste0("CREATE EXTERNAL TABLE ", dsName, ".", tblName, structure, " ROW FORMAT SERDE '", whatsthis, "' WITH SERDEPROPERTIES('separatorChar'=',')", " STORED AS TEXTFILE LOCATION '", s3_data_path, "'")
+  }
+  
+  cursor$execute(qry)
+}
+
+# Example:
+# acon = buildAthenaConnection()
+# buildAthenaTable(acon, dsName = 'event', tblName = 'eventlogs', s3_data_path = datapath, drop_if_exists = T)
+
+## SQL tools:
+
+sql.mlMapper = function(input, caseid_col, ts_col, et_col, var_col, value_col, tscat_col, variables){
+  cvpr = paste0("select ", caseid_col, ", ", tscat_col, ", ", var_col, ", max_by(", value_col, ", ", ts_col, ") as latestValue from (", input, ") group by ", caseid_col, ", ", tscat_col, ", ", var_col)
+  cvpr = sql.cast(cvpr, id_col = c(caseid_col, tscat_col), var_col = var_col, value_col = 'latestValue', variables = variables, aggregator = 'SUM')
+  # cptime = paste0("select ", caseid_col, "\n")
+  # cptime %<>% paste0(",MIN(", ts_col, ") AS caseStartTime", "\n")
+  # cptime %<>% paste0(",MAX(", ts_col, ") AS latestEventTime", "\n")
+  # cptime %<>% paste0(",MAX(IF(", et_col, " = 'LoanClosed', ", ts_col, ", cast('1900-01-01' as TIMESTAMP))) as closureTime", "\n")
+  # cptime %<>% paste0(" from (", input, ") group by ", caseid_col)
+  # sql.leftjoin(cvpr, cptime, by = caseid_col)
+  cvpr
+}
+
+sql.group_by = function(input, by){
+  paste0("(", input, ") GROUP BY ", by %>% paste(collapse = ","))
+}
+
+sql.summarise = function(input, ...){
+  vars = list(...)
+  if(length(vars) == 1 & inherits(vars[[1]], 'list')) vars = vars[[1]]
+  vnms = names(vars)
+  qry  = "SELECT "
+  for (vn in vnms){
+    qry %<>% paste0(vars[[vn]]," AS ", vn)
+    if(vn != vnms[length(vnms)]){
+      qry  %<>% paste0(", \n")
+    }
+  }
+  
+  qry %>% paste0(" FROM ", input)
+}
+
+sql.cast = function(input, id_col, var_col, value_col, variables, aggregator = 'SUM'){
+  qry = paste0("SELECT ",  id_col %>% paste(collapse = ','),  ",", "\n")
+  for (var in variables){
+    qry %<>% paste0(aggregator, "(IF(variable = '", var, "',", value_col, ", NULL)) AS ", var, ", \n")
+  }
+  qry %>% paste0("count(", value_col, ") as Count from (", input, ")", " group by ", id_col %>% paste(collapse = ','))
+}
+
+# Example:
+# athenaTableCast('event.eventlogs', 'caseid', 'variable', 'value', variables = c('OriginationChannel', 'Income'))
+
+sql.filter = function(input, ...){
+  filter = list(...)
+  if(length(filter) == 1 & inherits(filter[[1]], 'list')) filter = filter[[1]]
+  fnms = names(filter)
+  
+  qry = paste0("SELECT * FROM (", input, ") WHERE ")
+  for (fn in fnms){
+    if(inherits(filter[[fn]], 'character')){
+      qry %<>% paste0(fn," = '", filter[[fn]], "'")
+    } else {
+      qry %<>% paste0(fn," = ", filter[[fn]])
+    }
+    if(fn != fnms[length(fnms)]){qry %>% paste0(" AND ")}
+  }
+  return(qry)
+}
+
+# Returns the case profile containing the latest values of each variable
+# input must be in eventlog format:
+sql.caseProfile = function(input, caseid_col, ts_col, et_col, var_col, value_col, variables, with_times = T){
+  cvpr = paste0("select ", caseid_col, ", ", var_col, ", max_by(", value_col, ", ", ts_col, ") as latestValue from (", input, ") group by ", caseid_col, ", ", var_col)
+  cprf = sql.cast(cvpr, id_col = caseid_col, var_col = var_col, value_col = 'latestValue', variables = variables, aggregator = 'SUM')
+  if(with_times){
+    cptime = paste0("select ", caseid_col, "\n")
+    cptime %<>% paste0(",MIN(", ts_col, ") AS caseStartTime", "\n")
+    cptime %<>% paste0(",MAX(", ts_col, ") AS latestEventTime", "\n")
+    cptime %<>% paste0(",MAX(IF(", et_col, " = 'LoanClosed', ", ts_col, ", cast('1900-01-01' as TIMESTAMP))) as closureTime", "\n")
+    # cptime %<>% paste0(",closureTime - caseStartTime AS LoanAge", "\n")
+    cptime %<>% paste0(" from (", input, ") group by ", caseid_col)
+    return(sql.leftjoin(cprf, cptime, by = caseid_col))
+  } else {return(cprf)}
+}
+
+
+sql.arrange = function(input, by){
+  paste0(input, " ORDER BY ", by %>% paste(collapse = ","))
+}
+
+sql.leftjoin = function(table1, table2, by){
+  paste0("SELECT * FROM (", table1, ") a LEFT JOIN (", table2, ") b ON a.", by, " = b.", by)
+}
+
+sql.mutate = function(input, ...){
+  arg = list(...)
+  if(length(arg) == 1 & inherits(arg[[1]], 'list')) arg = arg[[1]]
+  anms = names(arg)
+  
+  qry = paste0("SELECT *, ")
+  
+  for (a in anms){
+    qry %<>% paste0(arg[[a]], " AS ", a)
+    if(a != anms[length(anms)]){qry %<>% paste0(", ")}
+  }
+  qry %>% paste0(" FROM (", input, ") ")
+}
+
+# Example:
+# qry = 'event.eventlogs' %>% sql.mutate(fvalue = "CAST(value as DOUBLE)")
+# qry %<>% paste0(" where variable <> 'variable'")
+# read_s3.athena(acon, query = qry %>% paste0(" limit 20")) %>% View
+
+# qry = 'event.eventlogs' %>% sql.mutate(fvalue = "CAST(value as DOUBLE)")
+# qry %<>% paste0(" where variable <> 'variable'")
+# qry %<>% sql.mutate(status = "CASE WHEN fvalue > 1 THEN 'A' WHEN fvalue = 1 THEN 'C' ELSE 'B' END")
+# qry = "SELECT * FROM event.eventlogs WHERE variable = 'ProductCode'"
+
+sql.binColumn = function(column, breaks){
+  breaks %<>% sort
+  mutscr = "CASE \n"
+  nms = names(breaks)
+  for (i in sequence(length(breaks))){
+    if(i == 1){
+      mutscr %<>% paste0("WHEN ", column, " < ", breaks[i], " THEN '", nms[i], "' \n")
+    } else if (i < length(breaks)){
+      mutscr %<>% paste0("WHEN ", column, " > ", breaks[i - 1], " AND ", column, " < ", breaks[i], " THEN '", nms[i], "' \n")
+    } else {
+      mutscr %<>% paste0("ELSE '", nms[i], "' END")
+    }
+  }  
+  
+  # CASE
+  # WHEN Tenure < 0 THEN '0'
+  # WHEN Tenure < 365 AND Tenure > 0 THEN '1'
+  # WHEN Tenure < 730 AND Tenure > 365 THEN '2'
+  # WHEN Tenure < 1095 AND Tenure > 730 THEN '3'
+  # WHEN Tenure < 1460 AND Tenure > 1095 THEN '4'
+  # WHEN Tenure < 1825 AND Tenure > 1460 THEN '5'
+  # WHEN Tenure < 2190 AND Tenure > 1825 THEN '6'
+  # ELSE '7'
+  # END
+  return(mutscr)
+}
+
+# Example:
+# sql.binColumn('LoanTenure', breaks = c('< 1 Yr' = 365, '1-2 Yrs' = 730, '2-3 Yrs' = 1095, '3-4 Yrs' = 1460, '4-5 Yrs' = 1825, '> 6 Yrs' = 2190))
+
 sql.head = function(input, n){
   input %>% paste('LIMIT', n)
 }
 
-                                        
-#' @export                                        
-read_parquet <- function(path, columns = NULL) {
-  library(reticulate)
-  library(dplyr)
-  pandas <- import("pandas")
-  
-  path <- path.expand(path)
-  path <- normalizePath(path)
-  
-  if (!is.null(columns)) columns = as.list(columns)
-  
-  xdf <- pandas$read_parquet(path, columns = columns)
-  
-  xdf <- as.data.frame(xdf, stringsAsFactors = FALSE)
-  
-  dplyr::tbl_df(xdf)
-  
-}                                        
-                                        
+
 
