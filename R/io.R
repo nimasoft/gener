@@ -7,7 +7,7 @@
 # Email :        nicolas.berta@gmail.com
 # Start Date:    28 October 2016
 # Last Revision: 12 September 2018
-# Version:       1.3.3
+# Version:       2.0.0
 
 # Version History:
 
@@ -23,7 +23,10 @@
 # 1.3.1     01 August 2017     Function rScriptFilter() exported.
 # 1.3.2     15 May 2018        Function sqlScript() modified: changes column names with 'AS' if argument 'fields' is a named vector
 # 1.3.3     12 September 2018  Function runSQL() added
-#
+# 2.0.0     26 June 2019       spark and athena tools and AGGERGATOR module added.
+
+
+################## ODBC TOOLS: ###############################
 
 # This function reads a table by ODBC and generates an object of type TIME.SERIES
 # Reads a table using ODBC
@@ -89,16 +92,19 @@ sqlFilter = function(colName, filter, vf = T){
            if (!is.null(filter$min)){
              if(vf){verify(filter$min, valid.time.classes, varname = 'filter$min')}
              if (inherits(filter$min, 'character')){minDate = char2Date(filter$min)} else {minDate = as.Date(filter$min)}
-             minDate = as.character(minDate)
-             scr = paste0(colName, minopr, "'", minDate, "'")
+             minDate = paste0("(CAST", "'", as.character(minDate), "'", " AS DATE)")
+             scr = paste0(colName, minopr, minDate)
              joint = " AND "
            }
            
            if (!is.null(filter$max)){
              verify(filter$max, valid.time.classes, varname = 'filter$max')
              if (inherits(filter$max, 'character')){maxDate = char2Date(filter$max)} else {maxDate = as.POSIXlt(filter$max)}
-             maxDate = as.character(maxDate)
-             scr = paste0(scr, joint, colName, maxopr, "'", maxDate, "'")
+             maxDate = paste0("CAST(", "'", as.character(maxDate), "'", " AS DATE)")
+             scr = paste0(scr, joint, colName, maxopr, maxDate)
+             
+             # maxDate = as.character(maxDate)
+             # scr = paste0(scr, joint, colName, maxopr, "'", maxDate, "'")
              joint = " AND "
            }
            if(filter$na.rm){scr = paste0(scr, joint, colName, " IS NOT NULL")}
@@ -109,7 +115,8 @@ sqlFilter = function(colName, filter, vf = T){
              # if (inherits(filter$min, 'character')){minTime = char2Time(filter$min)} else {minTime = as.POSIXlt(filter$min)}
              minTime = as.time(filter$min, target_class = 'POSIXlt')
              minTime = as.character(minTime, format = '%Y-%m-%d %H:%M:%S')
-             scr = paste0(colName, minopr, "'", minTime, "'")
+             minTime = paste0('CAST(', "'", minTime, "'", " AS TIMESTAMP)")
+             scr = paste0(colName, minopr, minTime)
              joint = " AND "
            }
            
@@ -117,7 +124,8 @@ sqlFilter = function(colName, filter, vf = T){
              verify(filter$max, valid.time.classes, varname = 'filter$max')
              if (inherits(filter$max, 'character')){maxTime = char2Time(filter$max)} else {maxTime = as.POSIXlt(filter$max)}
              maxTime = as.character(maxTime, format = '%Y-%m-%d %H:%M:%S')
-             scr = paste0(scr, joint, colName, maxopr,"'", maxTime, "'")
+             maxTime = paste0('CAST(', "'", maxTime, "'", " AS TIMESTAMP)")
+             scr = paste0(scr, joint, colName, maxopr, maxTime)
              joint = " AND "
            }
            if(filter$na.rm){scr = paste0(scr, joint, colName, " IS NOT NULL")}
@@ -258,150 +266,7 @@ runSQL <- function(query, ...){
 }
 
 
-### Transferred from project:
-## sqltools.R
-sql.mlMapper = function(input, caseid_col, ts_col, et_col, var_col, value_col, tscat_col, variables){
-  cvpr = paste0("select ", caseid_col, ", ", tscat_col, ", ", var_col, ", max_by(", value_col, ", ", ts_col, ") as latestValue from (", input, ") group by ", caseid_col, ", ", tscat_col, ", ", var_col)
-  cvpr = sql.cast(cvpr, id_col = c(caseid_col, tscat_col), var_col = var_col, value_col = 'latestValue', variables = variables, aggregator = 'SUM')
-  # cptime = paste0("select ", caseid_col, "\n")
-  # cptime %<>% paste0(",MIN(", ts_col, ") AS caseStartTime", "\n")
-  # cptime %<>% paste0(",MAX(", ts_col, ") AS latestEventTime", "\n")
-  # cptime %<>% paste0(",MAX(IF(", et_col, " = 'LoanClosed', ", ts_col, ", cast('1900-01-01' as TIMESTAMP))) as closureTime", "\n")
-  # cptime %<>% paste0(" from (", input, ") group by ", caseid_col)
-  # sql.leftjoin(cvpr, cptime, by = caseid_col)
-  cvpr
-}
-
-sql.group_by = function(input, by){
-  paste0("(", input, ") GROUP BY ", by %>% paste(collapse = ","))
-}
-
-sql.summarise = function(input, ...){
-  vars = list(...)
-  if(length(vars) == 1 & inherits(vars[[1]], 'list')) vars = vars[[1]]
-  vnms = names(vars)
-  qry  = "SELECT "
-  for (vn in vnms){
-    qry %<>% paste0(vars[[vn]]," AS ", vn)
-    if(vn != vnms[length(vnms)]){
-      qry  %<>% paste0(", \n")
-    }
-  }
-  
-  qry %>% paste0(" FROM ", input)
-}
-
-sql.cast = function(input, id_col, var_col, value_col, variables, aggregator = 'SUM'){
-  qry = paste0("SELECT ",  id_col %>% paste(collapse = ','),  ",", "\n")
-  for (var in variables){
-    qry %<>% paste0(aggregator, "(IF(variable = '", var, "',", value_col, ", NULL)) AS ", var, ", \n")
-  }
-  qry %>% paste0("count(", value_col, ") as Count from (", input, ")", " group by ", id_col %>% paste(collapse = ','))
-}
-
-# Example:
-# athenaTableCast('event.eventlogs', 'caseid', 'variable', 'value', variables = c('OriginationChannel', 'Income'))
-
-sql.filter = function(input, ...){
-  filter = list(...)
-  if(length(filter) == 1 & inherits(filter[[1]], 'list')) filter = filter[[1]]
-  fnms = names(filter)
-  
-  qry = paste0("SELECT * FROM (", input, ") WHERE ")
-  for (fn in fnms){
-    if(inherits(filter[[fn]], 'character')){
-      if(length(filter[[fn]]) == 1){
-        qry %<>% paste0(fn," = '", filter[[fn]], "'")
-      } else {
-        qry %<>% paste0(fn," IN (", paste0("'", filter[[fn]], "'") %>% paste(collapse = ','), ")")
-      }
-    } else {
-      qry %<>% paste0(fn," = ", filter[[fn]])
-    }
-    if(fn != fnms[length(fnms)]){qry %>% paste0(" AND ")}
-  }
-  return(qry)
-}
-
-# Returns the case profile containing the latest values of each variable
-# input must be in eventlog format:
-sql.caseProfile = function(input, caseid_col, ts_col, et_col, var_col, value_col, variables, with_times = T){
-  cvpr = paste0("select ", caseid_col, ", ", var_col, ", max_by(", value_col, ", ", ts_col, ") as latestValue from (", input, ") group by ", caseid_col, ", ", var_col)
-  cprf = sql.cast(cvpr, id_col = caseid_col, var_col = var_col, value_col = 'latestValue', variables = variables, aggregator = 'SUM')
-  if(with_times){
-    cptime = paste0("select ", caseid_col, "\n")
-    cptime %<>% paste0(",MIN(", ts_col, ") AS caseStartTime", "\n")
-    cptime %<>% paste0(",MAX(", ts_col, ") AS latestEventTime", "\n")
-    cptime %<>% paste0(",MAX(IF(", et_col, " = 'LoanClosed', ", ts_col, ", cast('1900-01-01' as TIMESTAMP))) as closureTime", "\n")
-    # cptime %<>% paste0(",closureTime - caseStartTime AS LoanAge", "\n")
-    cptime %<>% paste0(" from (", input, ") group by ", caseid_col)
-    return(sql.leftjoin(cprf, cptime, by = caseid_col))
-  } else {return(cprf)}
-}
-
-
-sql.arrange = function(input, by){
-  paste0(input, " ORDER BY ", by %>% paste(collapse = ","))
-}
-
-sql.leftjoin = function(table1, table2, by){
-  paste0("SELECT * FROM (", table1, ") a LEFT JOIN (", table2, ") b ON a.", by, " = b.", by)
-}
-
-sql.mutate = function(input, ...){
-  arg = list(...)
-  if(length(arg) == 1 & inherits(arg[[1]], 'list')) arg = arg[[1]]
-  anms = names(arg)
-
-  qry = paste0("SELECT *, ")
-  
-  for (a in anms){
-    qry %<>% paste0(arg[[a]], " AS ", a)
-    if(a != anms[length(anms)]){qry %<>% paste0(", ")}
-  }
-  qry %>% paste0(" FROM (", input, ") ")
-}
-
-# Example:
-# qry = 'event.eventlogs' %>% sql.mutate(fvalue = "CAST(value as DOUBLE)")
-# qry %<>% paste0(" where variable <> 'variable'")
-# read_s3.athena(acon, query = qry %>% paste0(" limit 20")) %>% View
-
-# qry = 'event.eventlogs' %>% sql.mutate(fvalue = "CAST(value as DOUBLE)")
-# qry %<>% paste0(" where variable <> 'variable'")
-# qry %<>% sql.mutate(status = "CASE WHEN fvalue > 1 THEN 'A' WHEN fvalue = 1 THEN 'C' ELSE 'B' END")
-# qry = "SELECT * FROM event.eventlogs WHERE variable = 'ProductCode'"
-
-sql.binColumn = function(column, breaks){
-  breaks %<>% sort
-  mutscr = "CASE \n"
-  nms = names(breaks)
-  for (i in sequence(length(breaks))){
-    if(i == 1){
-        mutscr %<>% paste0("WHEN ", column, " < ", breaks[i], " THEN '", nms[i], "' \n")
-    } else if (i < length(breaks)){
-        mutscr %<>% paste0("WHEN ", column, " > ", breaks[i - 1], " AND ", column, " < ", breaks[i], " THEN '", nms[i], "' \n")
-    } else {
-        mutscr %<>% paste0("ELSE '", nms[i], "' END")
-    }
-  }  
-  
-  # CASE
-  # WHEN Tenure < 0 THEN '0'
-  # WHEN Tenure < 365 AND Tenure > 0 THEN '1'
-  # WHEN Tenure < 730 AND Tenure > 365 THEN '2'
-  # WHEN Tenure < 1095 AND Tenure > 730 THEN '3'
-  # WHEN Tenure < 1460 AND Tenure > 1095 THEN '4'
-  # WHEN Tenure < 1825 AND Tenure > 1460 THEN '5'
-  # WHEN Tenure < 2190 AND Tenure > 1825 THEN '6'
-  # ELSE '7'
-  # END
-  return(mutscr)
-}
-
-
-
-### aggregator module:
+################## AGGREGATOR MODULE: ###############################
 
 AGGREGATOR = setRefClass(
   "AGGREGATOR", 
@@ -477,12 +342,8 @@ AGGREGATOR = setRefClass(
 )
 
 ################## SPARK TOOLS ###############################
-# Example:
-# sql.binColumn('LoanTenure', breaks = c('< 1 Yr' = 365, '1-2 Yrs' = 730, '2-3 Yrs' = 1095, '3-4 Yrs' = 1460, '4-5 Yrs' = 1825, '> 6 Yrs' = 2190))
 
-
-
-###### Spark tools:
+#' @export
 spark.read_s3 = function(path){
   sc <- sparklyr::spark_connect(master = 'local')
   el <- sparklyr::spark_read_csv(sc, name = 'el', path = path)
@@ -495,6 +356,7 @@ spark.read_s3 = function(path){
 # input_col = colname to be binned, must have numeric values
 # output_col = colname to be generated as a result of binning
 # splits = named numeric vector containing splits and labels for them
+#' @export
 spark.bin = function(df, binners){
   if(inherits(df, c('data.frame', 'tibble'))){
     for (b in binners){
@@ -518,6 +380,7 @@ spark.bin = function(df, binners){
 
 
 # 2btransferred to gener or niraspark (sparker)?
+#' @export
 spark.rename = function(tbl, ...){
   ns = c(...) %>% verify('character')
   lb = names(ns)
@@ -526,6 +389,7 @@ spark.rename = function(tbl, ...){
   parse(text = scr) %>% eval
 }
 
+#' @export
 spark.mutate = function(tbl, ...){
   ns = c(...) %>% verify('character')
   lb = names(ns)
@@ -534,6 +398,7 @@ spark.mutate = function(tbl, ...){
   parse(text = scr) %>% eval
 }
 
+#' @export
 spark.select = function(tbl, ...){
   ns = c(...) %>% verify('character') %>% intersect(colnames(tbl))
   if(length(ns) == 0){return(tbl)}
@@ -541,6 +406,7 @@ spark.select = function(tbl, ...){
   parse(text = scr) %>% eval
 }
 
+#' @export
 spark.unselect = function(tbl, ...){
   ns = c(...) %>% verify('character') %>% intersect(colnames(tbl))
   if(length(ns) == 0){return(tbl)}
@@ -548,6 +414,7 @@ spark.unselect = function(tbl, ...){
   parse(text = scr) %>% eval
 }
 
+#' @export
 spark.dummify = function(tbl, ..., keep_original = T, keep_index = F){
   cat_cols = c(...) %>% verify('character', domain = colnames(tbl), default = character()) %>% unique
   if(length(cat_cols) == 0) {return(tbl)}
@@ -578,46 +445,26 @@ spark.dummify = function(tbl, ..., keep_original = T, keep_index = F){
   return(tbl) 
 }
 
-###### Athena tools:
+################## ATHENA SQL TOOLS ###############################
 
-buildAthenaConnection = function(bucket = "s3://aws-athena-query-results-192395310368-ap-southeast-2/"){
+#' @export
+athena.buildConnection = function(bucket = "s3://aws-athena-query-results-192395310368-ap-southeast-2/", region = 'ap-southeast-2'){
   pyathena = reticulate::import('pyathena')
-  pyathena$connect(s3_staging_dir = bucket, region_name='ap-southeast-2')
+  pyathena$connect(s3_staging_dir = bucket, region_name = region)
 }
 
-read_s3.athena   = function(con, query){
+#' @export
+athena.read_s3   = function(con, query, max_rows = 100000){
   pandas   = reticulate::import('pandas')
-  pandas$read_sql(query, con)  
+  nrow     = pandas$read_sql(query %>% sql.nrow, con)[1,1]
+  if(nrow > max_rows) stop('The query will result a table with' %>% paste(nrow, 'rows which is higher than maximum:', max_rows))
+  else pandas$read_sql(query, con)
 }
 
-buildAthenaDataset = function(conn, dsName = 'dataset'){
+#' @export
+athena.buildDataset = function(conn, dsName = 'dataset'){
   curser = conn$cursor()
   qry = paste("CREATE DATABASE", dsName)
-  cursor$execute(qry)
-}
-
-buildAthenaTable = function(conn, dsName = 'dataset', tblName = 'data', s3_data_path, drop_if_exists = T, format = c('parquet', 'csv')){
-  cursor = conn$cursor()
-  format = match.arg(format)
-  if(drop_if_exists){
-    # Delete existing table
-    cursor$execute("DROP TABLE if exists " %>% paste0(dsName, '.', tblName))
-  }
-  
-  #create table statement please note that all the columns have string datatype. 
-  #Note that if all files contains column headers column headers will appear as a record in the table. You need to exclude the header while writing the select query
-  # TODO: need to generalize for given structure:
-  # structure    = "(caseID STRING, eventType STRING, eventTime STRING, variable STRING,value STRING)"
-  structure    = "(caseID STRING, eventType STRING, eventTime TIMESTAMP, variable STRING,value FLOAT)"
-  partition    = " PARTITIONED BY(caseid STRING, eventTime TIMESTAMP, )"
-  # s3_data_path = 's3://eventmapper.prod.sticky.westpac.elulaservices.com/run=488f037c-d5c2-475a-8d8f-4372f62e2177/data/'
-  whatsthis    = 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
-  if(format == 'parquet'){
-    qry          = paste0("CREATE EXTERNAL TABLE ", dsName, ".", tblName, structure, " STORED AS PARQUET LOCATION '", s3_data_path, "'", " tblproperties ('parquet.compress'='SNAPPY');")
-  } else {
-    qry          = paste0("CREATE EXTERNAL TABLE ", dsName, ".", tblName, structure, " ROW FORMAT SERDE '", whatsthis, "' WITH SERDEPROPERTIES('separatorChar'=',')", " STORED AS TEXTFILE LOCATION '", s3_data_path, "'")
-  }
-  
   cursor$execute(qry)
 }
 
@@ -625,8 +472,7 @@ buildAthenaTable = function(conn, dsName = 'dataset', tblName = 'data', s3_data_
 # acon = buildAthenaConnection()
 # buildAthenaTable(acon, dsName = 'event', tblName = 'eventlogs', s3_data_path = datapath, drop_if_exists = T)
 
-## SQL tools:
-
+#' @export
 sql.mlMapper = function(input, caseid_col, ts_col, et_col, var_col, value_col, tscat_col, variables){
   cvpr = paste0("select ", caseid_col, ", ", tscat_col, ", ", var_col, ", max_by(", value_col, ", ", ts_col, ") as latestValue from (", input, ") group by ", caseid_col, ", ", tscat_col, ", ", var_col)
   cvpr = sql.cast(cvpr, id_col = c(caseid_col, tscat_col), var_col = var_col, value_col = 'latestValue', variables = variables, aggregator = 'SUM')
@@ -639,15 +485,26 @@ sql.mlMapper = function(input, caseid_col, ts_col, et_col, var_col, value_col, t
   cvpr
 }
 
-sql.group_by = function(input, by){
-  paste0("(", input, ") GROUP BY ", by %>% paste(collapse = ","))
+#' @export
+sql.group_by = function(input, ...){
+  by    = c(...)
+  query = paste0("(", input, ") GROUP BY ", by %>% paste(collapse = ","))
+  list(query = query, id_cols = by)
 }
 
+#' @export
 sql.summarise = function(input, ...){
+  if(inherits(input, 'list')){
+    id_cols = input$id_cols
+    input   = input$query
+  } else {id_cols = ''}
   vars = list(...)
   if(length(vars) == 1 & inherits(vars[[1]], 'list')) vars = vars[[1]]
   vnms = names(vars)
   qry  = "SELECT "
+  add  = id_cols %>% paste(collapse = ', ')
+  if(add != ""){qry %<>% paste0(add, ", ")}
+  
   for (vn in vnms){
     qry %<>% paste0(vars[[vn]]," AS ", vn)
     if(vn != vnms[length(vnms)]){
@@ -658,6 +515,7 @@ sql.summarise = function(input, ...){
   qry %>% paste0(" FROM ", input)
 }
 
+#' @export
 sql.cast = function(input, id_col, var_col, value_col, variables, aggregator = 'SUM'){
   qry = paste0("SELECT ",  id_col %>% paste(collapse = ','),  ",", "\n")
   for (var in variables){
@@ -669,6 +527,7 @@ sql.cast = function(input, id_col, var_col, value_col, variables, aggregator = '
 # Example:
 # athenaTableCast('event.eventlogs', 'caseid', 'variable', 'value', variables = c('OriginationChannel', 'Income'))
 
+#' @export
 sql.filter = function(input, ...){
   filter = list(...)
   if(length(filter) == 1 & inherits(filter[[1]], 'list')) filter = filter[[1]]
@@ -688,6 +547,7 @@ sql.filter = function(input, ...){
 
 # Returns the case profile containing the latest values of each variable
 # input must be in eventlog format:
+#' @export
 sql.caseProfile = function(input, caseid_col, ts_col, et_col, var_col, value_col, variables, with_times = T){
   cvpr = paste0("select ", caseid_col, ", ", var_col, ", max_by(", value_col, ", ", ts_col, ") as latestValue from (", input, ") group by ", caseid_col, ", ", var_col)
   cprf = sql.cast(cvpr, id_col = caseid_col, var_col = var_col, value_col = 'latestValue', variables = variables, aggregator = 'SUM')
@@ -703,14 +563,17 @@ sql.caseProfile = function(input, caseid_col, ts_col, et_col, var_col, value_col
 }
 
 
+#' @export
 sql.arrange = function(input, by){
   paste0(input, " ORDER BY ", by %>% paste(collapse = ","))
 }
 
+#' @export
 sql.leftjoin = function(table1, table2, by){
   paste0("SELECT * FROM (", table1, ") a LEFT JOIN (", table2, ") b ON a.", by, " = b.", by)
 }
 
+#' @export
 sql.mutate = function(input, ...){
   arg = list(...)
   if(length(arg) == 1 & inherits(arg[[1]], 'list')) arg = arg[[1]]
@@ -735,6 +598,10 @@ sql.mutate = function(input, ...){
 # qry %<>% sql.mutate(status = "CASE WHEN fvalue > 1 THEN 'A' WHEN fvalue = 1 THEN 'C' ELSE 'B' END")
 # qry = "SELECT * FROM event.eventlogs WHERE variable = 'ProductCode'"
 
+
+# Example:
+# sql.binColumn('LoanTenure', breaks = c('< 1 Yr' = 365, '1-2 Yrs' = 730, '2-3 Yrs' = 1095, '3-4 Yrs' = 1460, '4-5 Yrs' = 1825, '> 6 Yrs' = 2190))
+#' @export
 sql.binColumn = function(column, breaks){
   breaks %<>% sort
   mutscr = "CASE \n"
@@ -762,12 +629,22 @@ sql.binColumn = function(column, breaks){
   return(mutscr)
 }
 
-# Example:
-# sql.binColumn('LoanTenure', breaks = c('< 1 Yr' = 365, '1-2 Yrs' = 730, '2-3 Yrs' = 1095, '3-4 Yrs' = 1460, '4-5 Yrs' = 1825, '> 6 Yrs' = 2190))
-
+#' @export
 sql.head = function(input, n){
   input %>% paste('LIMIT', n)
 }
 
 
+#' @export
+sql.nrow = function(input){
+  "SELECT COUNT(*) FROM (" %>% paste0(input, ")")
+}
 
+#' @export
+sql.cast = function(input, id_col, var_col, value_col, variables, aggregator = 'SUM'){
+  qry = paste0("SELECT ",  id_col %>% paste(collapse = ','),  ",", "\n")
+  for (var in variables){
+    qry %<>% paste0(aggregator, "(IF(variable = '", var, "',", value_col, ", NULL)) AS ", var, ", \n")
+  }
+  qry %>% paste0("count(", value_col, ") as Count from (", input, ")", " group by ", id_col %>% paste(collapse = ','))
+}
