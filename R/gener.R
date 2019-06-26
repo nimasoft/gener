@@ -4,8 +4,8 @@
 # Author:       Nicolas Berta 
 # Email :       nicolas.berta@gmail.com
 # Start Date:   21 October 2013
-# Last change:  26 March 2019
-# Version:      2.8.3
+# Last change:  26 June 2019
+# Version:      3.0.0
 
 # Version   Date               Action
 # -----------------------------------
@@ -119,7 +119,7 @@
 # 2.8.1     14 March 2019      Function list.default() added.
 # 2.8.2     26 March 2019      Function charFilter() added. Test it and see how it works.
 # 2.8.3     11 April 2019      Function partition() added. 
-
+# 3.0.0     26 June 2019       io.r changes to version 2.0.0 
 
 
 # --------------------------------------------
