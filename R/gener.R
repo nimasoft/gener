@@ -4,8 +4,8 @@
 # Author:       Nicolas Berta 
 # Email :       nicolas.berta@gmail.com
 # Start Date:   21 October 2013
-# Last change:  26 June 2019
-# Version:      3.0.0
+# Last change:  05 August 2019
+# Version:      3.0.5
 
 # Version   Date               Action
 # -----------------------------------
@@ -120,6 +120,8 @@
 # 2.8.2     26 March 2019      Function charFilter() added. Test it and see how it works.
 # 2.8.3     11 April 2019      Function partition() added. 
 # 3.0.0     26 June 2019       io.r changes to version 2.0.0 
+# 3.0.1     17 July 2019       io.r changes to version 2.0.1 
+# 3.0.5     05 August 2019     Functions pdf(), cdf(), cdf.inv() and gen.random() added.
 
 
 # --------------------------------------------
@@ -2284,3 +2286,50 @@ partition = function(tbl, ratio = 0.7){
   ind = N %>% sequence %>% sample(size = floor(ratio*N), replace = F)
   list(part1 = tbl[ind, ], part2 = tbl[- ind, ])
 }
+
+
+
+#' @export
+fmap = c(normal = 'norm', gaussian = 'norm', 
+         beta = 'beta', binomial = 'binom', 
+         'chi-squared' = 'chisq', chi = 'chisq', chi_squared = 'chisq', chisquared = 'chisq', 
+         exponential = 'exp', 
+         geometric = 'geom', hypergeomrtric = 'hyper', hyper_geometric = 'hyper', 'hyper-geometric' = 'hyper',
+         logistic = 'logis',
+         lognormal = 'lnorm', 'log-normal' = 'lnorm', log_normal = 'lnorm',
+         poisson = 'pois', 
+         student_t = 't', 'student_t' = 't',
+         studentized_range = 'tukey', 'studentized-range' = 'tukey',
+         uniform = 'unif', 
+         wilcoxon_rank_sum = 'wilcox', wilcoxon = 'wilcox', wilcoxon_signed_rank = 'signrank',
+         wilcoxonranksum = 'wilcox', ranksom = 'wilcox', rank_som = 'wilcox',
+         wilcoxonsignedrank = 'signrank',signed_rank = 'signrank', signedrank = 'signrank')
+
+#' @export
+pdf = function(family, ...){
+  family  %<>% tolower 
+  if(family %in% names(fmap)){family = fmap[family]}
+  parse(text = paste0('d', family, '(...)')) %>% eval
+}
+
+#' @export
+cdf = function(family, ...){
+  family  %<>% tolower 
+  if(family %in% names(fmap)){family = fmap[family]}
+  parse(text = paste0('p', family, '(...)')) %>% eval
+}
+
+#' @export
+cdf.inv = function(family, ...){
+  family  %<>% tolower 
+  if(family %in% names(fmap)){family = fmap[family]}
+  parse(text = paste0('q', family, '(...)')) %>% eval
+}
+
+#' @export
+gen.random = function(family, ...){
+  family  %<>% tolower 
+  if(family %in% names(fmap)){family = fmap[family]}
+  parse(text = paste0('r', family, '(...)')) %>% eval
+}
+
