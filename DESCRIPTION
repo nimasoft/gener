@@ -1,7 +1,7 @@
 Package: gener
 Type: Package
 Title: A library of useful general functions in R
-Version: 3.0.5
+Version: 3.0.9
 Date: 05 August 2019
 Author: Nicolas Berta
 Maintainer: Nicolas Berta <nicolas.berta@gmail.com>
