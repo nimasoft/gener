@@ -5,7 +5,7 @@
 # Email :       nicolas.berta@gmail.com
 # Start Date:   21 October 2013
 # Last change:  05 August 2019
-# Version:      3.0.5
+# Version:      3.0.9
 
 # Version   Date               Action
 # -----------------------------------
@@ -121,7 +121,7 @@
 # 2.8.3     11 April 2019      Function partition() added. 
 # 3.0.0     26 June 2019       io.r changes to version 2.0.0 
 # 3.0.1     17 July 2019       io.r changes to version 2.0.1 
-# 3.0.5     05 August 2019     Functions pdf(), cdf(), cdf.inv() and gen.random() added.
+# 3.0.9     05 August 2019     Functions pdf(), cdf(), cdf.inv() and gen.random() plus 4 type conversion functions added.
 
 
 # --------------------------------------------
@@ -2333,3 +2333,23 @@ gen.random = function(family, ...){
   parse(text = paste0('r', family, '(...)')) %>% eval
 }
 
+#' @export  
+string2factor = function(df){
+  cls = colnames(df) %>% sapply(function(i) class(df[,i])[1])
+  for(i in which(cls == 'character')) df[,i] %<>% as.factor 
+  return(df)
+}
+
+#' @export
+factor2integer = function(df){
+  cls = colnames(df) %>% sapply(function(i) class(df[,i])[1])
+  for(i in which(cls == 'factor')) df[,i] %<>% as.integer 
+  return(df)
+}
+
+#' @export
+numeric2time = function(df){
+  cls = colnames(df) %>% sapply(function(i) class(df[,i])[1])
+  for(i in which(cls %in% c('integer', 'numeric'))) df[,i] %<>% as.POSIXct(origin = '1970-01-01')
+  return(df)
+}
