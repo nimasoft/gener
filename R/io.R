@@ -6,8 +6,8 @@
 # Author:        Nicolas Berta
 # Email :        nicolas.berta@gmail.com
 # Start Date:    28 October 2016
-# Last Revision: 12 September 2018
-# Version:       2.0.0
+# Last Revision: 17 July 2019
+# Version:       2.0.1
 
 # Version History:
 
@@ -24,6 +24,7 @@
 # 1.3.2     15 May 2018        Function sqlScript() modified: changes column names with 'AS' if argument 'fields' is a named vector
 # 1.3.3     12 September 2018  Function runSQL() added
 # 2.0.0     26 June 2019       spark and athena tools and AGGERGATOR module added.
+# 2.0.1     17 July 2019       Function sqlFilter() modified: small bug fixed.
 
 
 ################## ODBC TOOLS: ###############################
@@ -70,7 +71,11 @@ sqlFilter = function(colName, filter, vf = T){
          'nominal' = {
            if(!is.null(filter$domain)){
              if (!inherits(filter$domain, 'character')){filter$domain %<>% as.character}
-             scr = paste0(colName, " IN ('",  paste(filter$domain, collapse = "','"), "')")
+             if(length(filter$domain) == 1){
+               scr = paste0(colName, " = '",  filter$domain, "'")
+             } else {
+               scr = paste0(colName, " IN ('",  paste(filter$domain, collapse = "','"), "')")
+             }
              joint = " AND "
            }
            if(filter$na.rm){
@@ -78,6 +83,15 @@ sqlFilter = function(colName, filter, vf = T){
            }
          },
          'numeric' = {
+           if(!is.null(filter$domain)){
+             if (!inherits(filter$domain, 'numeric')){filter$domain %<>% as.numeric}
+             if(length(filter$domain) == 1){
+               scr = paste0(colName, " = ",  filter$domain)
+             } else {
+               scr = paste0(colName, " IN (",  paste(filter$domain, collapse = ", "), ")")
+             }
+             joint = " AND "
+           }
            if (!is.null(filter$min)){
              scr = paste0(colName, minopr, filter$min)
              joint = " AND "
@@ -92,7 +106,7 @@ sqlFilter = function(colName, filter, vf = T){
            if (!is.null(filter$min)){
              if(vf){verify(filter$min, valid.time.classes, varname = 'filter$min')}
              if (inherits(filter$min, 'character')){minDate = char2Date(filter$min)} else {minDate = as.Date(filter$min)}
-             minDate = paste0("(CAST", "'", as.character(minDate), "'", " AS DATE)")
+             minDate = paste0("CAST(", "'", as.character(minDate), "'", " AS DATE)")
              scr = paste0(colName, minopr, minDate)
              joint = " AND "
            }
